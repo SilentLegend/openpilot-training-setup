@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -e
 
-# 1. Systeem updaten en basis tools installeren
+# 1. Systeem updaten
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y curl wget git build-essential software-properties-common python3-dev python3-pip python3-venv
 
-# 2. NVIDIA GPU-detectie en installatie (optioneel)
+# 2. NVIDIA GPU, CUDA & cuDNN (optioneel)
 if lspci | grep -i nvidia &> /dev/null; then
-  wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+  wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
   sudo dpkg -i cuda-keyring_1.1-1_all.deb
   sudo apt update
   sudo apt install -y nvidia-driver-550 cuda-toolkit-12-4 libcudnn8 libcudnn8-dev
@@ -15,7 +15,7 @@ if lspci | grep -i nvidia &> /dev/null; then
   echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
 fi
 
-# 3. Projectmap maken en virtual environment
+# 3. Projectmap maken en virtualenv
 PROJECT_DIR="$HOME/openpilot-training-setup"
 mkdir -p "$PROJECT_DIR"
 cd "$PROJECT_DIR"
@@ -23,20 +23,21 @@ python3 -m venv openpilot-env
 source openpilot-env/bin/activate
 pip install --upgrade pip
 
-# 4. OpenPilot clonen en builden
+# 4. Clone en build OpenPilot
 git clone --recurse-submodules https://github.com/commaai/openpilot.git
 cd openpilot
 tools/ubuntu_setup.sh
 scons -j"$(nproc)"
 cd ..
 
-# 5. Machine learning libraries installeren
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 || pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# 5. ML-libraries installeren
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 || \
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 pip install opencv-python pillow numpy matplotlib seaborn scikit-learn pandas jupyter notebook onnx onnxruntime-gpu capnp cereal
 
-# 6. Voorbeeldscripts neerzetten
+# 6. Voorbeeld-scripts neerzetten
 cat > model_config.py << 'EOF'
-import torch,torch.nn as nn
+import torch, torch.nn as nn
 from torchvision.models import efficientnet_b2
 class OpenPilotTrafficLightModel(nn.Module):
     def __init__(self):
@@ -59,7 +60,7 @@ EOF
 
 cat > train_traffic_lights.py << 'EOF'
 #!/usr/bin/env python3
-import torch,torch.nn as nn,torch.optim as optim
+import torch, torch.nn as nn, torch.optim as optim
 from torch.utils.data import DataLoader
 from model_config import OpenPilotTrafficLightModel
 def train_model(model,train_loader,val_loader,epochs=50):
@@ -81,13 +82,10 @@ def train_model(model,train_loader,val_loader,epochs=50):
                 out=model(x);vl+=crit(out,y).item()
                 corr+=out.argmax(1).eq(y).sum().item()
         acc=100*corr/len(val_loader.dataset)
-        print(f"Epoch{e}:Train{tl/len(train_loader):.4f},Val{vl/len(val_loader):.4f},Acc{acc:.2f}%")
+        echo "Epoch $e: Train $(echo "$tl/${#train_loader[@]}" | bc -l), Val $(echo "$vl/${#val_loader[@]}" | bc -l), Acc $acc%"
 if __name__=="__main__":
-    print("Voeg eigen DataLoader toe en start training.")
+    echo "Voeg eigen DataLoader toe en run train_model()"
 EOF
+chmod +x setup.sh train_traffic_lights.py
 
-# 7. Leesbare README
-cat > README.md << 'EOF'
-# OpenPilot Training Setup
-
-## Eén-commando Installatie
+echo "Setup compleet. Gebruik 'source openpilot-env/bin/activate' voor omgeving."
